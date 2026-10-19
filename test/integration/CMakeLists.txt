@@ -166,6 +166,8 @@ include_directories(${PROJECT_SOURCE_DIR}/test)
 gz_build_tests(TYPE INTEGRATION
   SOURCES
     ${tests}
+  INCLUDE_DIRS
+    ${PROJECT_SOURCE_DIR}/src
   LIB_DEPS
     ${EXTRA_TEST_LIB_DEPS}
     ${PROJECT_LIBRARY_TARGET_NAME}-rendering
@@ -173,6 +175,11 @@ gz_build_tests(TYPE INTEGRATION
     GZ_SIM_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
     GZ_IP=127.0.0.1
 )
+
+# The workspace can expose Homebrew's newer GoogleTest before this checkout's
+# vendored test headers. Keep the test headers paired with the vendored library.
+target_include_directories(INTEGRATION_odometry_publisher BEFORE PRIVATE
+  ${PROJECT_SOURCE_DIR}/test/gtest_vendor/include)
 
 
 # For INTEGRATION_physics_system, we need to check what version of DART is

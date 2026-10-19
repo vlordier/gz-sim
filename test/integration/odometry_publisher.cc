@@ -17,6 +17,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <cmath>
+
 #include <gz/msgs/odometry.pb.h>
 #include <gz/msgs/odometry_with_covariance.pb.h>
 #include <gz/msgs/pose_v.pb.h>
@@ -38,6 +41,7 @@
 #include "gz/sim/components/Pose.hh"
 #include "gz/sim/Server.hh"
 #include "gz/sim/SystemLoader.hh"
+#include "systems/odometry_publisher/AngularVelocity.hh"
 #include "test_config.hh"
 
 #include "../helpers/Relay.hh"
@@ -760,3 +764,40 @@ TEST_P(OdometryPublisherTest,
 // Run multiple times
 INSTANTIATE_TEST_SUITE_P(ServerRepeat, OdometryPublisherTest,
     ::testing::Range(1, 2));
+
+TEST(OdometryPublisherAngularVelocityTest, QuaternionRoundoff)
+{
+  // This pair is from consecutive finite-pose messages surrounding the first
+  // NaN angular-velocity sample in the CrazySim 500-Hz capture. Their relative
+  // quaternion has w > 1 by a few ULPs, making acos(w) undefined.
+  const math::Quaterniond lastRotation(
+      0.9999999850988387, 7.276105424545415e-05,
+      0.00014956947638943013, -9.76e-09);
+  const math::Quaterniond currentRotation(
+      1.0, 5.370497819967568e-05, 0.0001082145026884973,
+      -2.1518010484555816e-08);
+  const math::Pose3d lastPose(math::Vector3d::Zero, lastRotation);
+  const math::Pose3d currentPose(math::Vector3d::Zero, currentRotation);
+
+  const auto relativeRotation = currentRotation * lastRotation.Inverse();
+  math::Vector3d axis;
+  double angle = 0.0;
+  relativeRotation.AxisAngle(axis, angle);
+  EXPECT_FALSE(std::isfinite(angle));
+
+  const auto angularVelocity = systems::detail::CalculateAngularVelocity(
+      lastPose, currentPose, std::chrono::duration<double>(0.015));
+  EXPECT_TRUE(std::isfinite(angularVelocity.X()));
+  EXPECT_TRUE(std::isfinite(angularVelocity.Y()));
+  EXPECT_TRUE(std::isfinite(angularVelocity.Z()));
+  EXPECT_LT(angularVelocity.Length(), 0.01);
+}
+
+TEST(OdometryPublisherAngularVelocityTest, DegenerateInputs)
+{
+  const math::Pose3d identityPose;
+  const auto angularVelocity = systems::detail::CalculateAngularVelocity(
+      identityPose, identityPose, std::chrono::duration<double>::zero());
+
+  EXPECT_EQ(math::Vector3d::Zero, angularVelocity);
+}
